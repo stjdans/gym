@@ -5,23 +5,24 @@ import tensorflow as tf
 import keras
 from tqdm import tqdm
 import random
+from collections import deque
 
 # 환경생성
-env = gym.make('FrozenLake-v1', render_mode='rgb_array', is_slippery=False)
+env = gym.make('FrozenLake-v1', render_mode='ansi', is_slippery=False)
 state_size = env.observation_space.n
 action_size = env.action_space.n
 
 # 하이퍼파라미터
-n_episode = 500
+n_episode = 2000
 discount_factor = 0.9
 e = 1.
-e_decay = 0.995
+e_decay = 0.997
 e_min = 0.1
 batch_size = 32
-lr = 0.1
+lr = 0.01
 
 rList = []
-memory = []
+memory = deque(maxlen=2000)
 
 def onehot(x):
     return np.identity(state_size)[x:x+1][0]
@@ -29,24 +30,23 @@ def onehot(x):
 def buildModel():
     model = keras.Sequential([
         keras.layers.Input(shape=(state_size,)),
-        keras.layers.Dense(32, activation='relu'),
+        keras.layers.Dense(24, activation='relu'),
+        keras.layers.Dense(24, activation='relu'),
         keras.layers.Dense(action_size)
     ])
     model.compile(loss='mse', optimizer=keras.optimizers.Adam(learning_rate=lr))
+    # model.compile(loss='mse', optimizer=keras.optimizers.SGD(learning_rate=lr))
     return model
 
 
 def reply():
-    global memory
     if len(memory) < batch_size:
         return
     
-    # minibatch = random.sample(memory, batch_size)
-    minibatch = memory[:batch_size]
-    memory = memory[batch_size:]
+    minibatch = random.sample(memory, batch_size)
     
     states = []
-    q_values = []
+    targets = []
     
     for state, action, reward, next_state, done in minibatch:
         state_onehot = onehot(state)
@@ -60,13 +60,12 @@ def reply():
             q[action] = reward + discount_factor * np.max(q_next)
         
         states.append(state_onehot)
-        q_values.append(q)
+        targets.append(q)
         
-        
-    # print('len states : ', len(states))
-    # print('len q_values : ', len(q_values))
     # 훈련            
-    model.fit(np.array(states), np.array(q_values), verbose=0, epochs=1)
+    model.fit(np.array(states), np.array(targets), verbose=0, epochs=1)
+    
+
     
     
 # 모델 생성
@@ -74,7 +73,7 @@ model = buildModel()
 target = buildModel()
 target.set_weights(model.get_weights())
 
-for episode in tqdm(range(n_episode)):
+for episode in range(n_episode):
     state, _ = env.reset()
     total_reward = 0
 
@@ -84,7 +83,7 @@ for episode in tqdm(range(n_episode)):
         q_values = model.predict(state_onehot[np.newaxis], verbose=0)[0]
         
         # action 선택 방벙 : egreedy 사용
-        if np.random.rand(1) < e:
+        if np.random.rand() < e:
             # action = env.action_space.sample()
             action = np.random.randint(action_size)
         else: 
@@ -100,14 +99,15 @@ for episode in tqdm(range(n_episode)):
         total_reward += reward 
         state = next_state
         
-        reply()
-        
     rList.append(total_reward)
     
     if e > e_min:
         e *= e_decay
         
-    if episode % 10 == 0:
+    if episode % 5 == 0:
+        reply()
+    
+    if episode % 20 == 0:
         # 가중치 설정
         target.set_weights(model.get_weights())
 
@@ -116,8 +116,8 @@ for episode in tqdm(range(n_episode)):
 
 env.close()
 
-print('확률 : ', np.mean(rList, dtype=np.float32), '%')
+print('확률 : ', rList.count(1)/len(rList), '%')
 plt.bar(range(len(rList)), rList)
-plt.title(f'prop : {np.mean(rList, dtype=np.float32)}%')
+plt.title(f'prop : {rList.count(1)/len(rList)}%')
 plt.show()
     
