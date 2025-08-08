@@ -13,10 +13,10 @@ state_size = env.observation_space.n
 action_size = env.action_space.n
 
 # 하이퍼파라미터
-n_episode = 2000
+n_episode = 2_000
 discount_factor = 0.9
 e = 1.
-e_decay = 0.997
+e_decay = 0.999
 e_min = 0.1
 batch_size = 32
 lr = 0.01
@@ -34,7 +34,8 @@ def buildModel():
         keras.layers.Dense(24, activation='relu'),
         keras.layers.Dense(action_size)
     ])
-    model.compile(loss='mse', optimizer=keras.optimizers.Adam(learning_rate=lr))
+    # model.compile(loss='mse', optimizer=keras.optimizers.Adam(learning_rate=lr))
+    model.compile(loss='mse', optimizer=keras.optimizers.RMSprop(learning_rate=lr))
     # model.compile(loss='mse', optimizer=keras.optimizers.SGD(learning_rate=lr))
     return model
 
@@ -92,6 +93,9 @@ for episode in range(n_episode):
         next_state, reward, terminated, truncated, _ = env.step(action)
         done = terminated or truncated
 
+        if not done and state == next_state:
+            reward = -0.1
+
         if done and reward == 0:
             reward = -1
 
@@ -104,10 +108,10 @@ for episode in range(n_episode):
     if e > e_min:
         e *= e_decay
         
-    if episode % 5 == 0:
+    if episode % 2 == 0:
         reply()
     
-    if episode % 20 == 0:
+    if episode % 10 == 0:
         # 가중치 설정
         target.set_weights(model.get_weights())
 
@@ -116,6 +120,7 @@ for episode in range(n_episode):
 
 env.close()
 
+model.save('best_dqn.keras')
 print('확률 : ', rList.count(1)/len(rList), '%')
 plt.bar(range(len(rList)), rList)
 plt.title(f'prop : {rList.count(1)/len(rList)}%')
