@@ -8,18 +8,18 @@ import random
 from collections import deque
 
 # 환경생성
-env = gym.make('FrozenLake-v1', render_mode='ansi', is_slippery=False)
+env = gym.make('FrozenLake-v1', render_mode='ansi', is_slippery=True)
 state_size = env.observation_space.n
 action_size = env.action_space.n
 
 # 하이퍼파라미터
-n_episode = 2_000
+n_episode = 5_000
 discount_factor = 0.9
 e = 1.
 e_decay = 0.999
 e_min = 0.1
 batch_size = 32
-lr = 0.01
+lr = 0.001
 
 rList = []
 memory = deque(maxlen=2000)
@@ -34,8 +34,8 @@ def buildModel():
         keras.layers.Dense(24, activation='relu'),
         keras.layers.Dense(action_size)
     ])
-    # model.compile(loss='mse', optimizer=keras.optimizers.Adam(learning_rate=lr))
-    model.compile(loss='mse', optimizer=keras.optimizers.RMSprop(learning_rate=lr))
+    model.compile(loss='mse', optimizer=keras.optimizers.Adam(learning_rate=lr))
+    # model.compile(loss='mse', optimizer=keras.optimizers.RMSprop(learning_rate=lr))
     # model.compile(loss='mse', optimizer=keras.optimizers.SGD(learning_rate=lr))
     return model
 
@@ -100,10 +100,9 @@ for episode in range(n_episode):
             reward = -1
 
         memory.append((state, action, reward, next_state, done))
-        total_reward += reward 
         state = next_state
         
-    rList.append(total_reward)
+    rList.append(reward)
     
     if e > e_min:
         e *= e_decay
@@ -115,14 +114,14 @@ for episode in range(n_episode):
         # 가중치 설정
         target.set_weights(model.get_weights())
 
-    print('episode : {}, e : {}, total_reward : {}'.format(episode, e, total_reward))
+    print('episode : {}, e : {}, reward : {}'.format(episode, e, reward))
         
 
 env.close()
 
 model.save('best_dqn.keras')
-print('확률 : ', rList.count(1)/len(rList), '%')
+print('확률 : ', rList[-1000:].count(1)/1000, '%')
 plt.bar(range(len(rList)), rList)
-plt.title(f'prop : {rList.count(1)/len(rList)}%')
+plt.title(f'prop : {rList[-1000:].count(1)/1000}%')
 plt.show()
     
