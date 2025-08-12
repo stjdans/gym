@@ -15,12 +15,12 @@ print('state_size : ', state_size)
 print('action_size : ', action_size)
 
 # 하이퍼파라미터 설정
-n_episode = 10
+n_episode = 1000
 discount_factor = 0.9
 e = 0.9
 e_min = 0.1
-e_decay = 0.9
-lr = 0.001
+e_decay = 0.998
+lr = 0.01
 batch_size = 32
 
 def onehot(x):
@@ -75,6 +75,8 @@ def reply():
 
     main.fit(np.array(states), np.array(targets), verbose=0, epochs=1)
 
+
+step = 0
 for i in range(n_episode):
     # 환경 초기화
     state, info = env.reset()
@@ -86,12 +88,12 @@ for i in range(n_episode):
             action = env.action_space.sample()
         else:
             pred = main.predict(state_onehot[np.newaxis, :], verbose=0)[0]
-            # action = np.argmax(pred + np.random.random(action_size) * e)
-            action = np.argmax(pred)
+            action = np.argmax(pred + np.random.random(action_size) * e)
+            # action = np.argmax(pred)
         
         new_state, reward, terminated, truncated, info = env.step(action)
-        done = terminated or truncated
-        if done:
+        done = terminated or truncated or (reward == -100)
+        if done and reward != -100:
             reward = 100
         elif reward == -100:
             pass
@@ -101,24 +103,23 @@ for i in range(n_episode):
         # 경험 저장
         memory.append((state_onehot, action, reward, onehot(new_state), done))
         
-        # if reward == -100:
-        #     break
-        
         state = new_state
+        step += 1
+        
+        if step % 20 == 0:
+            reply()
     
+        # 가중치 업데이트
+        if step % 100 == 0:
+            target.set_weights(main.get_weights())
+        
     rList.append(reward)
     
     if e > e_min:
         e *= e_decay
         
-    if i % 2 == 0:
-        reply()
-    
-    # 가중치 업데이트
-    if i % 10 == 0:
-        target.set_weights(main.get_weights())
-        
-    print(f'episode : {i}, e : {e}, reward : {reward}, Done : {done}')
+
+    print(f'episode : {i}, e : {e}, reward : {reward}, Done : {done}, step : {step}')
     
 # plt.bar(range(100), rList[-100:])
 # plt.title(f'{rList[-100:].count(100) / 100}%')
@@ -140,7 +141,7 @@ for i in range(n_episode):
     done = False
     while not done:
         state_onehot = onehot(state)
-        pred = main.predict(state_onehot[np.newaxis, :])
+        pred = main.predict(state_onehot[np.newaxis, :], verbose=0)
         action = np.argmax(pred[0])
         print(f'pred : {pred}')
         new_state, reward, terminated, truncated, _ = env.step(action)
