@@ -17,19 +17,20 @@ print('obs shape : ', env.observation_space.shape)
 print('action_size : ', action_size)
 
 # 하이퍼파라미터
-n_episode = 500
+n_episode = 1000
 e = 0.9
 e_min = 0.1
-e_decay = 0.995
-lr = 0.001
+e_decay = 0.999
+lr = 0.01
+
 d_factor = 0.9
-batch_size = 16
+batch_size = 32
 
 def build_model():
     model = keras.Sequential([
         keras.layers.Input(shape=(4,)),
-        keras.layers.Dense(24, activation='relu'),
-        keras.layers.Dense(24, activation='relu'),
+        keras.layers.Dense(8, activation='relu'),
+        keras.layers.Dense(8, activation='relu'),
         keras.layers.Dense(action_size)
     ])
 
@@ -99,7 +100,7 @@ for i in tqdm(range(n_episode)):
         if all_step % 20 == 0:
             replay()
         
-        if all_step % 200 == 0:
+        if all_step % 100 == 0:
             target.set_weights(main.get_weights())
         
     print(f'episode : {i}, e : {e:.2f}, step : {step} / {all_step}, reward : {reward}, done : {done}')
