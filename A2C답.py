@@ -48,6 +48,7 @@ class A2C(nn.Module):
         
         
     def forward(self, x: np.ndarray) -> tuple[torch.Tensor, torch.Tensor]:
+        # print(f'forward >> x shape : {x.shape}')
         x = torch.Tensor(x).to(self.device)
         state_values = self.critic(x)
         action_logits_vec = self.actor(x)
@@ -56,14 +57,23 @@ class A2C(nn.Module):
     def select_action(
         self, x: np.ndarray
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        
+        # print('select_action......')
         state_value, action_logits = self.forward(x)
+        # print('#' * 100)
+        # print(f'\tstate_value shape : {state_value.shape}')
+        # print(f'\tstate_value : {state_value}')
+        # print(f'\taction_logits shape : {action_logits.shape}')
+        # print(f'\taction_logits : {action_logits}')
         action_pd = torch.distributions.Categorical(
             logits=action_logits
         )
+        
+        # print(f'\action_pd : {action_pd}')
         actions = action_pd.sample()
         action_log_probs = action_pd.log_prob(actions)
         entropy = action_pd.entropy()
+        # print('#' * 100)
+        
         return actions, action_log_probs, state_value, entropy
     
     def get_losses(
@@ -80,6 +90,7 @@ class A2C(nn.Module):
     ) -> tuple[torch.Tensor, torch.Tensor]:
         
         T = len(rewards)
+        # print('T : ', T)
         advantages = torch.zeros(T, self.n_envs, device=device)
         
         gae = 0.0
@@ -147,6 +158,8 @@ else:
     
 obs_shape = envs.single_observation_space.shape[0]
 action_shape = envs.single_action_space.n
+print(f'obs_shape : {obs_shape}')
+print(f'action_shape : {action_shape}')
 
 use_cuda = False
 if use_cuda:
@@ -173,15 +186,24 @@ for sample_phase in tqdm(range(n_updates)):
     if sample_phase == 0:
         states, info = envs_wrapper.reset(seed=42)
         
+    
     for step in range(n_steps_per_update):
+        # print(f'states shape : {states.shape}')
+        
         actions, actions_log_probs, state_value_preds, entropy = agent.select_action(
             states
         )
-        
+        # print(f'actions : {actions}')
+        # print(f'actions_log_probs : {actions_log_probs}')
+        # print(f'state_value_preds : {state_value_preds}')
+        # print(f'entropy : {entropy}')
         states, rewards, terminated, truncated, infos = envs_wrapper.step(
             actions.cpu().numpy()
         )
         
+        # print(f'states : {states.shape}')
+        # print(f'rewards : {rewards}')
+        # print(f'terminated : {terminated}')
         ep_value_preds[step] = torch.squeeze(state_value_preds)
         ep_rewards[step] = torch.tensor(rewards, device=device)
         ep_action_log_probs[step] = actions_log_probs
@@ -207,6 +229,82 @@ for sample_phase in tqdm(range(n_updates)):
     actor_losses.append(actor_loss.detach().cpu().numpy())
     entropies.append(entropy.detach().mean().cpu().numpy())
     
-    #plot
-    rolling_length = 20
+##########################################################
+#plot
+rolling_length = 20
+fig, axs = plt.subplots(2, 2, figsize=(12,5))
+fig.suptitle(
+    f'Training plots for {agent.__class__.__name__} in the LunarLander-v3 environment \n \
+    (n_envs={n_envs}, n_steps_per_update={n_steps_per_update}, randomize_domain={randomize_domain})' 
+)
+
+# episode return
+axs[0][0].set_title('Episode Returns')
+episode_returns_moving_average = (
+    np.convolve(
+        np.array(envs_wrapper.return_queue).flatten(),
+        np.ones(rolling_length),
+        mode='valid'
+    ) / rolling_length
+)
+axs[0][0].plot(
+    np.arange(len(episode_returns_moving_average)) / n_envs,
+    episode_returns_moving_average
+)
+axs[0][0].set_xlabel('Number of episodes')
+
+# entropy
+axs[1][0].set_title('Entropy')
+entropy_moving_average = (
+    np.convolve(
+        np.array(entropies), np.ones(rolling_length), mode='valid'
+    ) / rolling_length
+)
+axs[1][0].plot(entropy_moving_average)
+axs[1][0].set_xlabel('Number of updates')
+
+# critic loss
+axs[0][1].set_title('Critic Loss')
+critic_losses_moving_average = (
+    np.convolve(
+        np.array(critic_losses).flatten(), np.ones(rolling_length), mode='valid'
+    ) / rolling_length
+)
+axs[0][1].plot(critic_losses_moving_average)
+axs[0][1].set_xlabel('Number of updates')
+
+# actor loss
+axs[1][1].set_title('Actor Loss')
+actor_losses_moving_average = (
+    np.convolve(
+        np.array(actor_losses).flatten(), np.ones(rolling_length), mode='valid'
+    ) / rolling_length
+)
+axs[1][1].plot(actor_losses_moving_average)
+axs[1][1].set_xlabel('Number of updates')
+
+plt.tight_layout()
+plt.show()
     
+print('T' * 100)
+# TEST
+env = gym.make_vec('LunarLander-v3', render_mode='human', max_episode_steps=600)
+state, info = env.reset()
+print('state : ', state)
+
+
+for i in range(20):
+    done = False
+    
+    while not done:
+        actions, actions_log_probs, state_value_preds, entropy = agent.select_action(
+            state
+        )
+        print('actions : ', actions)
+        print('actions_log_probs : ', actions_log_probs)
+        
+        next, reward, terminated, truncated, info = env.step(actions.cpu().numpy())
+        
+        done = terminated or truncated
+        
+        state = next
