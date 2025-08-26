@@ -24,6 +24,7 @@ class A2C(nn.Module):
         self.device = device
         self.n_envs = n_envs
         
+        # value
         critic_layers = [
             nn.Linear(n_features, 32),
             nn.ReLU(),
@@ -32,6 +33,7 @@ class A2C(nn.Module):
             nn.Linear(32, 1)
         ]
         
+        # policy
         actor_layers = [
             nn.Linear(n_features, 32),
             nn.ReLU(),
@@ -57,22 +59,16 @@ class A2C(nn.Module):
     def select_action(
         self, x: np.ndarray
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        # print('select_action......')
+
         state_value, action_logits = self.forward(x)
-        # print('#' * 100)
-        # print(f'\tstate_value shape : {state_value.shape}')
-        # print(f'\tstate_value : {state_value}')
-        # print(f'\taction_logits shape : {action_logits.shape}')
-        # print(f'\taction_logits : {action_logits}')
+
         action_pd = torch.distributions.Categorical(
             logits=action_logits
         )
         
-        # print(f'\action_pd : {action_pd}')
         actions = action_pd.sample()
         action_log_probs = action_pd.log_prob(actions)
         entropy = action_pd.entropy()
-        # print('#' * 100)
         
         return actions, action_log_probs, state_value, entropy
     
@@ -188,29 +184,24 @@ for sample_phase in tqdm(range(n_updates)):
         
     
     for step in range(n_steps_per_update):
-        # print(f'states shape : {states.shape}')
         
         actions, actions_log_probs, state_value_preds, entropy = agent.select_action(
             states
         )
-        # print(f'actions : {actions}')
-        # print(f'actions_log_probs : {actions_log_probs}')
-        # print(f'state_value_preds : {state_value_preds}')
-        # print(f'entropy : {entropy}')
+
+
         states, rewards, terminated, truncated, infos = envs_wrapper.step(
             actions.cpu().numpy()
         )
         
-        # print(f'states : {states.shape}')
-        # print(f'rewards : {rewards}')
-        # print(f'terminated : {terminated}')
+
         ep_value_preds[step] = torch.squeeze(state_value_preds)
         ep_rewards[step] = torch.tensor(rewards, device=device)
         ep_action_log_probs[step] = actions_log_probs
         
         masks[step] = torch.tensor([not term for term in terminated])
         
-    
+    # 스텝이 완료된 후 로스 계산
     critic_loss, actor_loss = agent.get_losses(
         ep_rewards,
         ep_action_log_probs,
